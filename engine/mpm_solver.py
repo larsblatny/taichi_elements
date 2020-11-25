@@ -220,8 +220,7 @@ class MPMSolver:
                          dt * self.C[p]) @ self.F[p]
             # Hardening coefficient: snow gets harder when compressed
             h = ti.exp(10 * (1.0 - self.Jp[p]))
-            if self.material[
-                    p] == self.material_elastic:  # jelly, make it softer
+            if self.material[p] == self.material_elastic:  # jelly, make it softer
                 h = 0.3
             mu, la = self.mu_0 * h, self.lambda_0 * h
             if self.material[p] == self.material_water:  # liquid
@@ -247,10 +246,10 @@ class MPMSolver:
                 self.F[p] = U @ sig @ V.transpose()
 
             stress = ti.Matrix.zero(ti.f32, self.dim, self.dim)
-
+            # Stress is initially tau - the Kirchhoff stress tensor
             if self.material[p] != self.material_sand:
-                stress = 2 * mu * (self.F[p] - U @ V.transpose()) @ self.F[p].transpose(
-                ) + ti.Matrix.identity(ti.f32, self.dim) * la * J * (J - 1)
+                # Fixed Corotated:
+                stress = 2 * mu * (self.F[p] - U @ V.transpose()) @ self.F[p].transpose() + ti.Matrix.identity(ti.f32, self.dim) * la * J * (J - 1)
             else:
                 sig = self.sand_projection(sig, p)
                 self.F[p] = U @ sig @ V.transpose()
@@ -637,17 +636,25 @@ class MPMSolver:
     def particle_info(self):
         np_x = np.ndarray((self.n_particles[None], self.dim), dtype=np.float32)
         self.copy_dynamic_nd(np_x, self.x)
+
         np_v = np.ndarray((self.n_particles[None], self.dim), dtype=np.float32)
         self.copy_dynamic_nd(np_v, self.v)
+
         np_material = np.ndarray((self.n_particles[None], ), dtype=np.int32)
         self.copy_dynamic(np_material, self.material)
+
         np_color = np.ndarray((self.n_particles[None], ), dtype=np.int32)
         self.copy_dynamic(np_color, self.color)
+
+        np_Jp = np.ndarray((self.n_particles[None], ), dtype=np.float32)
+        self.copy_dynamic(np_Jp, self.Jp)
+
         return {
             'position': np_x,
             'velocity': np_v,
             'material': np_material,
-            'color': np_color
+            'color': np_color,
+            'Jp': np_Jp
         }
 
     @ti.kernel
@@ -662,7 +669,8 @@ class MPMSolver:
         np.savez_compressed(output_fn,
                             x=particles['position'],
                             v=particles['velocity'],
-                            c=particles['color'])
+                            c=particles['color'],
+                            Jp=particles['Jp'])
 
         print(f'Writing to disk: {time.time() - t:.3f} s')
 
